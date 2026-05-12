@@ -48,10 +48,23 @@ export const db = {
     const sliced = rows.slice(offset, offset + limit);
     return sliced.map((r) => {
       const res = state.results.find((x) => x.rec_id === r.id);
-      return res
-        ? { ...r, outcome: res.outcome, pnl_inr: res.pnl_inr, exit_price: res.exit_price, mistake_reason: res.mistake_reason, user_note: res.user_note, result_at: res.updated_at }
-        : r;
+      if (!res) return r;
+      return {
+        ...r,
+        outcome: res.outcome,
+        pnl_inr: res.pnl_inr,
+        exit_price: res.exit_price,
+        mistake_reason: res.mistake_reason,
+        user_note: res.user_note,
+        actual_lots: res.actual_lots,
+        actual_entry: res.actual_entry,
+        actual_exit: res.actual_exit,
+        result_at: res.updated_at,
+      };
     });
+  },
+  findResult(rec_id) {
+    return state.results.find((x) => x.rec_id === rec_id) || null;
   },
   upsertResult(result) {
     const existing = state.results.find((r) => r.rec_id === result.rec_id);
@@ -73,7 +86,18 @@ export const db = {
     // recommendations LEFT JOIN results — used by analytics
     return state.recommendations.map((r) => {
       const res = state.results.find((x) => x.rec_id === r.id);
-      return { ...r, outcome: res?.outcome, pnl_inr: res?.pnl_inr, exit_price: res?.exit_price, result_at: res?.updated_at };
+      return {
+        ...r,
+        outcome: res?.outcome,
+        pnl_inr: res?.pnl_inr,
+        exit_price: res?.exit_price,
+        actual_lots: res?.actual_lots,
+        actual_entry: res?.actual_entry,
+        actual_exit: res?.actual_exit,
+        mistake_reason: res?.mistake_reason,
+        user_note: res?.user_note,
+        result_at: res?.updated_at,
+      };
     });
   },
 };

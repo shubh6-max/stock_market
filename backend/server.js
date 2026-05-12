@@ -64,11 +64,27 @@ app.get("/api/journal/:id", (req, res) => {
 });
 
 app.post("/api/journal/:id/result", (req, res) => {
-  const { outcome, exit_price, pnl_inr, mistake_reason, user_note } = req.body || {};
-  const valid = ["TARGET1_HIT", "TARGET2_HIT", "SL_HIT", "MANUAL_EXIT", "SKIPPED", "OPEN"];
-  if (!valid.includes(outcome)) return res.status(400).json({ error: "invalid outcome" });
-  const id = recordResult({ rec_id: req.params.id, outcome, exit_price, pnl_inr, mistake_reason, user_note });
-  res.json({ ok: true, id });
+  const body = req.body || {};
+  const validOutcomes = ["TARGET1_HIT", "TARGET2_HIT", "SL_HIT", "MANUAL_EXIT", "SKIPPED", "OPEN"];
+  // outcome is optional on partial updates (e.g. user just sets actual_lots)
+  if (body.outcome != null && !validOutcomes.includes(body.outcome)) {
+    return res.status(400).json({ error: "invalid outcome" });
+  }
+  recordResult({ rec_id: req.params.id, ...body });
+  // Return the updated row so the client can refresh inline
+  const updated = getRecommendation(req.params.id);
+  res.json({ ok: true, row: updated });
+});
+
+// PATCH alias for partial updates (semantically clearer for cell edits)
+app.patch("/api/journal/:id", (req, res) => {
+  const body = req.body || {};
+  const validOutcomes = ["TARGET1_HIT", "TARGET2_HIT", "SL_HIT", "MANUAL_EXIT", "SKIPPED", "OPEN"];
+  if (body.outcome != null && !validOutcomes.includes(body.outcome)) {
+    return res.status(400).json({ error: "invalid outcome" });
+  }
+  recordResult({ rec_id: req.params.id, ...body });
+  res.json({ ok: true });
 });
 
 app.delete("/api/journal/:id", (req, res) => {
@@ -141,32 +157,38 @@ app.post("/api/analyze", upload.fields([{ name: "chart_nifty" }, { name: "chart_
       })),
     });
 
+    // Parallel batch: all independent agent calls run concurrently
+    // (vision per chart + macro + options per chart). Strategist depends on all.
     send("status", { step: "vision", message: `Vision Analyst reading ${charts.length} chart${charts.length > 1 ? "s" : ""}…` });
-    for (const c of charts) {
-      c.vision = await runVisionAgent(c.imageDataUrl, {
+    send("status", { step: "macro", message: "Macro Strategist scanning DXY / VIX / crude…" });
+    send("status", { step: "options", message: "Options analyst — PCR, max pain, OI buildup…" });
+
+    const primaryInstrument = charts[0].instrument;
+
+    const visionPromises = charts.map((c) =>
+      runVisionAgent(c.imageDataUrl, {
         instrument: c.instrument,
         spot: snapshot?.[c.instrument.toLowerCase()]?.price,
         key_levels: {
           vwap: c.indicators.vwap, cpr: c.indicators.cpr, opening_range: c.indicators.opening_range,
           ema_9: c.indicators.ema_9, ema_21: c.indicators.ema_21, ema_50: c.indicators.ema_50,
         },
-      });
-    }
+      }).then((r) => { c.vision = r; return r; })
+    );
+    const macroPromise = runMacroAgent({ instrument: primaryInstrument, today, snapshot });
+    const optionsPromises = charts.map((c) =>
+      runOptionsAgent({ chainSummary: c.optionChain }).then((r) => { c.optionAnalysis = r; return r; })
+    );
+
+    const [visionResults, macro, optionAnalysisResults] = await Promise.all([
+      Promise.all(visionPromises),
+      macroPromise,
+      Promise.all(optionsPromises),
+    ]);
+
     send("vision", charts.map((c) => ({ instrument: c.instrument, ...c.vision })));
-
-    send("status", { step: "macro", message: "Macro Strategist scanning DXY / VIX / crude…" });
-    const primaryInstrument = charts[0].instrument;
-    const macro = await runMacroAgent({ instrument: primaryInstrument, today, snapshot });
     send("macro", { text: macro });
-
-    send("status", { step: "options", message: "Options analyst — PCR, max pain, OI buildup…" });
-    const optionsResults = [];
-    for (const c of charts) {
-      const r = await runOptionsAgent({ chainSummary: c.optionChain });
-      c.optionAnalysis = r;
-      optionsResults.push({ instrument: c.instrument, ...r });
-    }
-    send("options", optionsResults);
+    send("options", charts.map((c, i) => ({ instrument: c.instrument, ...optionAnalysisResults[i] })));
 
     send("status", { step: "strategist", message: "Strategist comparing setups + risk math…" });
     const strategist = await runStrategistAgent({

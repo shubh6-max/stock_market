@@ -853,10 +853,112 @@ body {
   padding: 16px;
   margin-top: 12px;
 }
-.row-expand-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.row-expand-grid { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 16px; }
 @media (max-width: 700px) { .row-expand-grid { grid-template-columns: 1fr; } }
 .exp-title { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; font-weight: 700; margin-bottom: 6px; }
 .exp-val { font-size: 13px; line-height: 1.5; }
+.exp-textarea {
+  width: 100%;
+  min-height: 70px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  resize: vertical;
+}
+.exp-textarea:focus { outline: none; border-color: var(--accent); background: rgba(255,255,255,0.06); }
+.recompute-btn {
+  margin-top: 10px;
+  background: rgba(76,201,240,0.1);
+  border: 1px dashed rgba(76,201,240,0.5);
+  color: var(--accent);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+.recompute-btn:hover { background: rgba(76,201,240,0.18); }
+
+.vs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.vs-cell {
+  background: rgba(255,255,255,0.035);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.vs-k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; }
+.vs-v { font-size: 12.5px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* ---------- INLINE EDITABLE TABLE ---------- */
+.journal-help {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.journal-table.editable td .ai-val,
+.journal-table .ai-val {
+  color: var(--muted);
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+}
+.cell-sub {
+  color: var(--muted-2);
+  font-size: 10.5px;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-editable {
+  display: inline-block;
+  cursor: text;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border-bottom: 1px dashed var(--border);
+  min-width: 50px;
+  transition: background 0.1s ease, border-color 0.1s ease;
+  font-variant-numeric: tabular-nums;
+}
+.cell-editable:hover {
+  background: rgba(76,201,240,0.08);
+  border-bottom-color: var(--accent);
+}
+.cell-editable.busy { opacity: 0.5; }
+.cell-empty { color: var(--muted-2); }
+.cell-spin {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--accent);
+}
+.cell-input {
+  width: 90px;
+  background: rgba(76,201,240,0.08);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.cell-select {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cell-select:hover { border-color: var(--accent); }
+.cell-select:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- PERFORMANCE KPIs ---------- */
 .kpi-grid {
