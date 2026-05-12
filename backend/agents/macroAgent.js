@@ -1,36 +1,38 @@
 import { callAzure } from "../azureClient.js";
 
-const SYSTEM = `You are a macro & geopolitical strategist for Indian index options. You have REAL live numbers (DXY, USD/INR, crude, US 10y, India VIX). Build the brief ON these numbers — never contradict them.
+const SYSTEM = `You are a macro and geopolitical context assistant for Indian equity index analysis. You produce a concise educational brief summarizing the macro backdrop for NIFTY or BANKNIFTY.
 
-Cover (one line each):
-- DXY regime (level + bias for INR/Indian equity)
-- USD/INR level + RBI behavior
-- Brent crude level + impact (inflation / OMC margin)
-- US 10y yield + Fed lean
-- India VIX level + what that means (low = trending day, high = whippy / event risk)
-- FII / DII flow tendency this week
-- Live geopolitical risks (specific names: wars, elections, China, US-China, ME, EU)
-- One probable event in next 5 sessions and expected directional impact
+You are supplied with live numeric values (DXY, USD/INR, India VIX, Brent crude, US 10y yield, index changes). Build the brief on these values and do not contradict them.
 
-Finish with ONE line exactly:
+Cover each topic on one line:
+- DXY level and its general implication for Indian equities and INR
+- USD/INR level and likely RBI posture
+- Brent crude level and its impact on Indian inflation / OMC margins
+- US 10y yield level and current Fed lean
+- India VIX level and what it suggests about expected daily range and event risk
+- FII / DII flow tendency for the current week (informed view)
+- One or two prominent geopolitical themes currently relevant (e.g. ongoing conflicts, upcoming elections, trade frictions)
+- One probable scheduled event in the next ~5 trading sessions and its likely directional impact
+
+End with a single line in the form:
 NET DIRECTIONAL LEAN: BULLISH | BEARISH | NEUTRAL (confidence XX%)
 
-No hedging. No "wait". Pick a side.`;
+Keep the tone analytical and professional. This is an educational summary, not a recommendation to act.`;
 
 export async function runMacroAgent({ instrument, today, snapshot }) {
-  const user = `Today: ${today}
-Instrument: ${instrument}
+  const user = `Date: ${today}
+Instrument under analysis: ${instrument}
 
-LIVE MACRO NUMBERS (Yahoo Finance, just fetched):
+Live macro values (Yahoo Finance, just fetched):
 - India VIX: ${fmt(snapshot?.indiavix?.price)} (${pct(snapshot?.indiavix?.changePct)})
 - DXY: ${fmt(snapshot?.dxy?.price)} (${pct(snapshot?.dxy?.changePct)})
 - USD/INR: ${fmt(snapshot?.usdinr?.price)} (${pct(snapshot?.usdinr?.changePct)})
 - Brent crude: $${fmt(snapshot?.crude?.price)} (${pct(snapshot?.crude?.changePct)})
 - US 10y yield: ${fmt(snapshot?.us10y?.price)}% (${pct(snapshot?.us10y?.changePct)})
-- Nifty spot: ${fmt(snapshot?.nifty?.price)} (${pct(snapshot?.nifty?.changePct)})
-- BankNifty spot: ${fmt(snapshot?.banknifty?.price)} (${pct(snapshot?.banknifty?.changePct)})
+- NIFTY spot: ${fmt(snapshot?.nifty?.price)} (${pct(snapshot?.nifty?.changePct)})
+- BANKNIFTY spot: ${fmt(snapshot?.banknifty?.price)} (${pct(snapshot?.banknifty?.changePct)})
 
-Produce the macro brief now.`;
+Produce the brief.`;
   return callAzure({ system: SYSTEM, user, temperature: 0.45, maxTokens: 700 });
 }
 

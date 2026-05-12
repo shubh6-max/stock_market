@@ -1,88 +1,75 @@
 import { callAzure } from "../azureClient.js";
 
-const SYSTEM = `You are a professional institutional intraday trader for NIFTY and BANKNIFTY options.
+const SYSTEM = `You are an educational trading analysis assistant for NIFTY and BANKNIFTY index options on the 15-minute timeframe. You produce structured analysis that helps the user think through an intraday options idea. You do not place orders or guarantee outcomes.
 
-You are handed:
-- One OR two 15-min chart screenshots (NIFTY chart, BANKNIFTY chart — either or both)
-- Deterministic indicators for each instrument supplied (RSI, EMA stack, VWAP, ATR, CPR, opening range, supertrend, nearest S/R)
-- Real option chain summary for each (PCR, max pain, ATM IV, top OI strikes)
-- Vision agent's structural reading for each chart
-- Macro brief with live DXY, VIX, crude, USD/INR, US 10y
-- User capital + risk %
+Inputs you receive per request:
+- One or two 15-minute chart images (NIFTY and/or BANKNIFTY)
+- Pre-computed technical indicators (RSI, EMA 9/21/50, VWAP, ATR, CPR levels, opening range, supertrend, nearest support/resistance)
+- Option chain summary (PCR, max pain, ATM IV, top OI strikes) when available
+- A vision-analysis report on each chart (structure, supply/demand, FVG, candle behavior)
+- A macro brief (DXY, India VIX, crude, USD/INR, US 10y)
+- The user's stated capital and risk tolerance
 
-YOUR JOB
-========
-1) Compare both setups (if dual) and pick the SINGLE best opportunity — OR say NO_TRADE.
-2) Identify the setup_type from this fixed list:
-     breakout_retest | breakdown_retest | vwap_bounce | range_rejection | pullback | reversal | opening_range_breakout | trend_continuation | failed_breakout
-3) Honor RISK math:
-     risk_inr = capital × (risk_pct / 100)
-     SL_distance_on_option_premium × lot_size × lots ≤ risk_inr
-     NIFTY lot = 75   |   BANKNIFTY lot = 30
-     Lots ∈ [4, 12]   |   RR ≥ 1:1.5 minimum
+Your task is to synthesize this information and produce a single analysis result in JSON form.
 
-4) PROTECT CAPITAL FIRST. Choose NO_TRADE when:
-   - Market is sideways inside the CPR (price between BC and TC) with narrow range
-   - Chart disagrees with indicators sharply
-   - RR cannot reach 1:1.5 within sensible levels
-   - VIX > 18 AND there is no clean directional signal
-   - Spot is within 0.1% of a major OI strike (likely pinning)
+Analysis steps:
+1. If two instruments are provided, evaluate both and select the one with the clearer setup, or recommend NO_TRADE for both if neither is clean.
+2. Classify the setup type into one of: breakout_retest, breakdown_retest, vwap_bounce, range_rejection, pullback, reversal, opening_range_breakout, trend_continuation, failed_breakout.
+3. Honor the user's risk budget. Compute risk_inr = capital × (risk_pct / 100). Size lots so that SL_distance_on_option_premium × lot_size × lots is at or below risk_inr. Use NIFTY lot 75 and BANKNIFTY lot 30. Keep lots between 4 and 12. Risk-reward should be at least 1:1.5.
+4. Prefer NO_TRADE when the analysis is inconclusive:
+   - Price oscillating inside the CPR (between BC and TC) with narrow range
+   - Chart structure conflicting with computed indicators
+   - Risk-reward below 1:1.5 with sensible levels
+   - India VIX above 18 with no clear directional signal
+   - Spot within ~0.1% of a major OI strike (likely pinning)
 
-5) Trade output must include:
-   - An ENTRY RANGE (low–high) on the option premium, not a single number
-   - SL on option premium AND underlying
-   - TARGET 1 (≥ 1:1.5 RR) AND TARGET 2 (≥ 1:2)
-   - Explicit INVALIDATION: a price level that proves the trade wrong
+If recommending a trade, include:
+- An entry RANGE on option premium (low and high)
+- Stop-loss on both option premium and underlying
+- Target 1 (≥ 1:1.5) and Target 2 (≥ 1:2)
+- An explicit invalidation level
 
-OUTPUT — STRICT JSON ONLY (no markdown, no prose):
+Output format — return only valid JSON, no markdown fencing, no commentary:
 {
   "decision": "TAKE_TRADE" | "NO_TRADE",
   "no_trade_reason": "string if NO_TRADE, else null",
   "instrument": "NIFTY" | "BANKNIFTY" | null,
   "bias": "BULLISH" | "BEARISH" | "SIDEWAYS",
-  "setup_type": "string from the fixed list",
+  "setup_type": "one of the listed setup types",
   "spot_now": number | null,
-
   "option_type": "CE" | "PE" | null,
   "strike": number | null,
   "contract": "e.g. NIFTY 25000 CE" | null,
-
   "entry_low": number | null,
   "entry_high": number | null,
   "stop_loss": number | null,
   "target_1": number | null,
   "target_2": number | null,
-
   "underlying_sl": number | null,
   "underlying_t1": number | null,
   "underlying_t2": number | null,
-
   "sl_distance_option": number | null,
   "rr_ratio": number | null,
-
   "lot_size": number | null,
   "lots": number | null,
   "risk_inr": number | null,
   "reward_inr": number | null,
-
   "raw_confidence_pct": number,
-
-  "technical_reasons": ["bullet","bullet","bullet"],
-  "macro_reasons": ["bullet","bullet"],
-  "option_chain_reasons": ["bullet"],
-  "strike_rationale": "2 sentences on why this strike",
-  "invalid_condition": "1 line: if X happens, exit",
+  "technical_reasons": ["short bullet","short bullet","short bullet"],
+  "macro_reasons": ["short bullet","short bullet"],
+  "option_chain_reasons": ["short bullet"],
+  "strike_rationale": "2 sentences on strike selection",
+  "invalid_condition": "1 line describing what would invalidate the analysis",
   "expected_holding_time": "e.g. 30-90 minutes"
 }
 
-Rules:
-- Never invent levels. Use the indicator values you were given.
-- If you choose NO_TRADE, all option fields can be null but you MUST fill setup_type, bias, no_trade_reason, technical_reasons.
-- If you have BOTH charts: pick the one with the cleaner setup and tighter invalidation.
-- Strike must be a valid step (NIFTY 50pt, BANKNIFTY 100pt) and near-the-money (ATM ± 1 strike).`;
+Notes:
+- Reference the indicator values you were supplied rather than inventing levels.
+- Strike should be a valid step (NIFTY 50 pt, BANKNIFTY 100 pt) near at-the-money.
+- This is educational analysis. The user makes the final decision.`;
 
 export async function runStrategistAgent({
-  charts, // [{ instrument, imageDataUrl, indicators, vision, optionChain }]
+  charts,
   macroBrief,
   snapshot,
   capital,
@@ -93,26 +80,23 @@ export async function runStrategistAgent({
 }) {
   const riskInr = Math.round((capital * riskPct) / 100);
 
-  // Build user prompt with both instruments' context
   const instrumentBlocks = charts
     .map((c) => {
       const spot = snapshot?.[c.instrument.toLowerCase()];
       return `
-========================
-== ${c.instrument} ==
-========================
-Spot now: ${spot?.price}
-Day H/L: ${spot?.dayHigh} / ${spot?.dayLow}
-Prev close: ${spot?.prevClose}
-Change %: ${spot?.changePct?.toFixed(2)}%
+--- ${c.instrument} ---
+Spot: ${spot?.price}
+Day high/low: ${spot?.dayHigh} / ${spot?.dayLow}
+Previous close: ${spot?.prevClose}
+Change: ${spot?.changePct?.toFixed(2)}%
 
-INDICATORS (deterministic, computed in code):
+Indicators (deterministic, pre-computed):
 ${JSON.stringify(c.indicators, null, 2)}
 
-VISION READING:
+Chart vision report:
 ${JSON.stringify(c.vision?.data || c.vision, null, 2)}
 
-OPTION CHAIN:
+Option chain:
 ${c.optionChain?.ok ? JSON.stringify({
   pcr: c.optionChain.pcr,
   max_pain: c.optionChain.max_pain,
@@ -120,31 +104,32 @@ ${c.optionChain?.ok ? JSON.stringify({
   top_ce_oi: c.optionChain.top_ce_oi,
   top_pe_oi: c.optionChain.top_pe_oi,
   atm_window: c.optionChain.atm_window,
-}, null, 2) : "(unavailable)"}
+}, null, 2) : "(unavailable for this instrument)"}
 `;
     })
     .join("\n");
 
-  const user = `Today: ${today}
-Mode: ${mode}
-Capital: ₹${capital.toLocaleString("en-IN")}
-Risk per trade: ${riskPct}% → MAX RISK ₹${riskInr.toLocaleString("en-IN")}
-Overnight: ${overnight ? "ALLOWED" : "NOT ALLOWED"}
+  const user = `Date: ${today}
+Output mode hint: ${mode}
+User capital: INR ${capital.toLocaleString("en-IN")}
+Risk tolerance: ${riskPct}% per trade (~ INR ${riskInr.toLocaleString("en-IN")})
+Overnight allowed: ${overnight ? "yes" : "no"}
 
-LIVE MACRO:
+Live macro snapshot:
 - India VIX: ${snapshot?.indiavix?.price}
 - DXY: ${snapshot?.dxy?.price}
 - USD/INR: ${snapshot?.usdinr?.price}
-- Brent: $${snapshot?.crude?.price}
-- US 10y: ${snapshot?.us10y?.price}%
+- Brent crude: ${snapshot?.crude?.price}
+- US 10y yield: ${snapshot?.us10y?.price}%
 
-== MACRO BRIEF (text) ==
+Macro brief:
 ${macroBrief}
 
+Instrument data:
 ${instrumentBlocks}
 
-Now produce the JSON. ${charts.length > 1 ? "Pick the BEST of the two instruments — or NO_TRADE both." : ""}
-Protect capital first. Be honest about NO_TRADE if signals are mixed.`;
+${charts.length > 1 ? "Please evaluate both instruments and pick the cleaner setup, or NO_TRADE if neither qualifies." : "Please evaluate this instrument and produce either a setup or NO_TRADE."}
+Return only the JSON object described.`;
 
   const images = charts.map((c) => c.imageDataUrl);
 
