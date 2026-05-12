@@ -283,4 +283,4 @@ function persistRecommendation({ strategist, confidence, adjustment, explanation
 }
 
 const port = process.env.PORT || 5174;
-app.listen(port, () => console.log(`QuantSignal v3 :${port}`));
+app.listen(port, () => console.log(`StrikePilot :${port}`));

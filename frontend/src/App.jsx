@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LiveTicker from "./components/LiveTicker.jsx";
 import Nav from "./components/Nav.jsx";
+import BrandMark from "./components/BrandMark.jsx";
 import Analyzer from "./pages/Analyzer.jsx";
 import Journal from "./pages/Journal.jsx";
 import Performance from "./pages/Performance.jsx";
@@ -29,10 +30,10 @@ export default function App() {
       <div className="app">
         <div className="header">
           <div className="brand">
-            <div className="logo">Q</div>
+            <BrandMark size={44} />
             <div>
-              <h1>QuantSignal</h1>
-              <div className="sub">NIFTY / BANKNIFTY · multi-agent intraday co-pilot · self-learning</div>
+              <h1>StrikePilot</h1>
+              <div className="sub">AI co-pilot for NIFTY &amp; BANKNIFTY options · self-learning</div>
             </div>
           </div>
           <span className="pill"><span className="dot"></span> Live · Yahoo Finance + NSE</span>

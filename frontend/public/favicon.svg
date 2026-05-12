@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4cc9f0"/>
+      <stop offset="100%" stop-color="#7c5cff"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06091a" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#06091a"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- ascending micro-bars (subtle background pattern) -->
+  <rect x="13" y="44" width="4" height="8"  rx="1" fill="#06091a" opacity="0.18"/>
+  <rect x="21" y="38" width="4" height="14" rx="1" fill="#06091a" opacity="0.18"/>
+  <rect x="29" y="32" width="4" height="20" rx="1" fill="#06091a" opacity="0.18"/>
+  <rect x="37" y="24" width="4" height="28" rx="1" fill="#06091a" opacity="0.18"/>
+  <rect x="45" y="18" width="4" height="34" rx="1" fill="#06091a" opacity="0.18"/>
+  <!-- trending up line -->
+  <polyline points="13,46 23,40 33,30 45,20 51,15"
+            stroke="url(#glow)" stroke-width="4.5"
+            stroke-linecap="round" stroke-linejoin="round"
+            fill="none"/>
+  <!-- strike target dot at apex -->
+  <circle cx="51" cy="15" r="6.5" fill="#06091a"/>
+  <circle cx="51" cy="15" r="2.8" fill="#4cc9f0"/>
+</svg>

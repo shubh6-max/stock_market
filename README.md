@@ -1,6 +1,6 @@
-# QuantSignal v2 — NIFTY / BANKNIFTY Multi-Agent Intraday Trader
+# StrikePilot — AI Co-Pilot for NIFTY & BANKNIFTY Options
 
-A React + Node.js trading assistant that combines **real market data**, **deterministic technical indicators**, **NSE option chain analytics**, and a **6-agent LLM pipeline** to generate intraday options trade plans on the NIFTY / BANKNIFTY 15-minute timeframe.
+A React + Node.js trading assistant that combines **real market data**, **deterministic technical indicators**, **NSE option chain analytics**, and a **7-agent LLM pipeline** to generate intraday options trade plans on the NIFTY / BANKNIFTY 15-minute timeframe — and learns from your actual results.
 
 Output adapts to the user — **Beginner** mode gives plain-English instructions ("buy this, exit if X happens"), **Pro** mode gives institutional bullets with greeks/IV reasoning.
 
