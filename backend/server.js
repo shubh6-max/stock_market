@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 
-import { getDashboardSnapshot, get15mCandles, getDailyCandles, symbolFor } from "./services/marketData.js";
+import { getDashboardSnapshot, get15mCandles, getDailyCandles, symbolFor, assessDataQuality } from "./services/marketData.js";
 import { computeAll } from "./services/indicators.js";
 import { fetchOptionChain } from "./services/optionChain.js";
 
@@ -44,6 +44,46 @@ app.get("/api/indicators", async (req, res) => {
     const [c15, cd] = await Promise.all([get15mCandles(sym, 5), getDailyCandles(sym, 30)]);
     res.json({ instrument, candles15m_count: c15.length, indicators: computeAll(c15, cd) });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Diagnostics — tells the user what data is reachable from this machine right now.
+app.get("/api/diagnostics", async (_req, res) => {
+  const out = { timestamp: new Date().toISOString(), checks: {} };
+  // Yahoo: spot
+  try {
+    const snap = await getDashboardSnapshot();
+    out.checks.yahoo_spot = {
+      ok: !!snap?.nifty?.price,
+      nifty: snap?.nifty?.price ?? null,
+      banknifty: snap?.banknifty?.price ?? null,
+      indiavix: snap?.indiavix?.price ?? null,
+      error: snap?.nifty?.error || snap?.banknifty?.error || null,
+    };
+  } catch (e) {
+    out.checks.yahoo_spot = { ok: false, error: e.message };
+  }
+  // Yahoo: 15m candles
+  try {
+    const c = await get15mCandles("^NSEI", 5);
+    out.checks.yahoo_candles_15m = { ok: c.length > 0, count: c.length };
+  } catch (e) { out.checks.yahoo_candles_15m = { ok: false, error: e.message }; }
+  // Yahoo: daily candles
+  try {
+    const c = await getDailyCandles("^NSEI", 30);
+    out.checks.yahoo_candles_daily = { ok: c.length > 0, count: c.length };
+  } catch (e) { out.checks.yahoo_candles_daily = { ok: false, error: e.message }; }
+  // NSE option chain
+  try {
+    const oc = await fetchOptionChain("NIFTY");
+    out.checks.nse_option_chain = { ok: oc?.ok === true, pcr: oc?.pcr, max_pain: oc?.max_pain, error: oc?.error };
+  } catch (e) { out.checks.nse_option_chain = { ok: false, error: e.message }; }
+  // Azure ping (cheap — list of deployment-meta info isn't always exposed, so just confirm env vars exist)
+  out.checks.azure_env = {
+    ok: !!process.env.AZURE_ENDPOINT && !!process.env.AZURE_API_KEY && !!process.env.AZURE_DEPLOYMENT,
+    deployment: process.env.AZURE_DEPLOYMENT || null,
+  };
+  out.summary = Object.entries(out.checks).map(([k, v]) => `${k}: ${v.ok ? "OK" : "FAIL"}`).join(" | ");
+  res.json(out);
 });
 
 // JOURNAL ROUTES
@@ -143,17 +183,34 @@ app.post("/api/analyze", upload.fields([{ name: "chart_nifty" }, { name: "chart_
       ]);
       const indicators = computeAll(c15, cd);
       const imageDataUrl = `data:${file.mimetype || "image/png"};base64,${file.buffer.toString("base64")}`;
-      return { instrument, imageDataUrl, indicators, optionChain: oc };
+      const dq = assessDataQuality({
+        snapshot: snapshot?.[instrument.toLowerCase()],
+        indicators,
+        optionChainOk: oc?.ok ?? false,
+        candles15mCount: c15.length,
+        dailyCandlesCount: cd.length,
+      });
+      console.log(`[analyze] ${instrument} data quality: ${dq.score}/100 (${dq.band}); issues: ${dq.issues.join(" | ") || "none"}`);
+      return { instrument, imageDataUrl, indicators, optionChain: oc, dataQuality: dq, candles15mCount: c15.length };
     }));
+
+    // Aggregate quality across all instruments (worst case)
+    const aggregateDQ = {
+      score: Math.min(...charts.map((c) => c.dataQuality.score)),
+      band: charts.map((c) => c.dataQuality.band).sort((a, b) => ({ poor: 0, partial: 1, good: 2 }[a] - { poor: 0, partial: 1, good: 2 }[b]))[0],
+      per_instrument: Object.fromEntries(charts.map((c) => [c.instrument, c.dataQuality])),
+    };
 
     send("market", {
       snapshot,
+      data_quality: aggregateDQ,
       instruments: charts.map((c) => ({
         instrument: c.instrument,
         indicators: c.indicators,
         option_chain_ok: c.optionChain?.ok ?? false,
         pcr: c.optionChain?.pcr,
         max_pain: c.optionChain?.max_pain,
+        data_quality: c.dataQuality,
       })),
     });
 
@@ -193,6 +250,7 @@ app.post("/api/analyze", upload.fields([{ name: "chart_nifty" }, { name: "chart_
     send("status", { step: "strategist", message: "Strategist comparing setups + risk math…" });
     const strategist = await runStrategistAgent({
       charts, macroBrief: macro, snapshot, capital, riskPct, mode, overnight, today,
+      dataQuality: aggregateDQ,
     });
     send("strategist", strategist);
 

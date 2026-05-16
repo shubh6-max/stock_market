@@ -29,6 +29,7 @@ export async function getSpotQuote(symbol) {
       time: q.regularMarketTime,
     };
   } catch (e) {
+    console.warn(`[market] quote ${symbol} failed: ${e.message}`);
     return { symbol, error: e.message };
   }
 }
@@ -43,7 +44,7 @@ export async function get15mCandles(symbol, days = 5) {
       interval: "15m",
     });
     const quotes = res?.quotes || [];
-    return quotes
+    const candles = quotes
       .filter((c) => c.close != null && c.open != null)
       .map((c) => ({
         time: c.date,
@@ -53,7 +54,10 @@ export async function get15mCandles(symbol, days = 5) {
         close: c.close,
         volume: c.volume || 0,
       }));
+    if (candles.length === 0) console.warn(`[market] 15m candles for ${symbol}: empty response`);
+    return candles;
   } catch (e) {
+    console.warn(`[market] 15m candles ${symbol} failed: ${e.message}`);
     return [];
   }
 }
@@ -68,7 +72,7 @@ export async function getDailyCandles(symbol, days = 30) {
       interval: "1d",
     });
     const quotes = res?.quotes || [];
-    return quotes
+    const candles = quotes
       .filter((c) => c.close != null)
       .map((c) => ({
         time: c.date,
@@ -78,7 +82,10 @@ export async function getDailyCandles(symbol, days = 30) {
         close: c.close,
         volume: c.volume || 0,
       }));
+    if (candles.length === 0) console.warn(`[market] daily candles for ${symbol}: empty response`);
+    return candles;
   } catch (e) {
+    console.warn(`[market] daily candles ${symbol} failed: ${e.message}`);
     return [];
   }
 }
@@ -103,6 +110,44 @@ export async function getDashboardSnapshot() {
 export function symbolFor(instrument) {
   const k = (instrument || "NIFTY").toUpperCase();
   return SYMBOLS[k] || SYMBOLS.NIFTY;
+}
+
+// Score what data we actually got, so the UI + LLM can react accordingly.
+export function assessDataQuality({ snapshot, indicators, optionChainOk, candles15mCount, dailyCandlesCount }) {
+  const issues = [];
+  const spot = snapshot;
+  if (!spot?.price) issues.push("spot price missing");
+  if (candles15mCount === 0) issues.push("no 15-min candles");
+  if (candles15mCount > 0 && candles15mCount < 30) issues.push(`only ${candles15mCount} 15-min candles (need 30+ for EMA50)`);
+  if (dailyCandlesCount < 2) issues.push("no previous-day candle for CPR");
+  if (!indicators?.vwap) issues.push("VWAP unavailable (likely market closed or no today candles)");
+  if (!indicators?.opening_range) issues.push("opening range unavailable");
+  if (!indicators?.rsi_14) issues.push("RSI unavailable");
+  if (!indicators?.ema_9) issues.push("EMA stack unavailable");
+  if (!optionChainOk) issues.push("NSE option chain unavailable (regional block or rate limit)");
+
+  // Score from 0 (nothing) to 100 (everything)
+  const checks = [
+    !!spot?.price,
+    candles15mCount >= 30,
+    dailyCandlesCount >= 2,
+    !!indicators?.vwap,
+    !!indicators?.rsi_14,
+    !!indicators?.ema_9,
+    !!indicators?.cpr,
+    !!indicators?.atr_14,
+    !!indicators?.supertrend,
+    !!optionChainOk,
+  ];
+  const passed = checks.filter(Boolean).length;
+  const score = Math.round((passed / checks.length) * 100);
+
+  return {
+    score,
+    band: score >= 75 ? "good" : score >= 45 ? "partial" : "poor",
+    issues,
+    chart_image_available: true,  // always true if user uploaded
+  };
 }
 
 export { SYMBOLS };

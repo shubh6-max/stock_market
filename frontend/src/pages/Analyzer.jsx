@@ -7,6 +7,7 @@ import SettingsPanel from "../components/SettingsPanel.jsx";
 import MarketContext from "../components/MarketContext.jsx";
 import ConfidenceMeter from "../components/ConfidenceMeter.jsx";
 import RiskPanel from "../components/RiskPanel.jsx";
+import DataQualityBanner from "../components/DataQualityBanner.jsx";
 
 const INITIAL_STEPS = [
   { key: "data", label: "Fetch live spot, OHLC, macro from Yahoo Finance", status: "idle" },
@@ -172,6 +173,7 @@ export default function Analyzer({ snapshot }) {
       <div>
         <div className="card">
           <h2><span className="num">3</span> Agent pipeline</h2>
+          <DataQualityBanner market={marketCtx} />
           <MarketContext market={marketCtx} snapshot={snapshot} instrument={chosenInstrument} />
           <AgentTimeline steps={steps} times={stepTimes} />
         </div>
