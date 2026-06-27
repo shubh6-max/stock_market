@@ -6,6 +6,8 @@ import Analyzer from "./pages/Analyzer.jsx";
 import Journal from "./pages/Journal.jsx";
 import Performance from "./pages/Performance.jsx";
 
+const MARKET_POLL_MS = 60_000;
+
 const TAB_META = {
   analyzer: {
     title: "Decision Workspace",
@@ -68,7 +70,7 @@ export default function App() {
     }
 
     load();
-    pollRef.current = setInterval(load, 30000);
+    pollRef.current = setInterval(load, MARKET_POLL_MS);
     return () => clearInterval(pollRef.current);
   }, []);
 
