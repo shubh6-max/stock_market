@@ -1,0 +1,75 @@
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 58px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: rgba(251, 253, 255, 0.96);
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.switch-row.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: rgba(47, 111, 237, 0.06);
+}
+
+.switch-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.switch-copy label {
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.switch-copy span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.switch-control {
+  position: relative;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px;
+  cursor: pointer;
+  background: rgba(148, 163, 184, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.22);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.switch-control.active {
+  background: linear-gradient(180deg, rgba(58, 121, 237, 0.98), rgba(47, 111, 237, 0.92));
+  box-shadow: 0 8px 18px rgba(47, 111, 237, 0.22);
+}
+
+.switch-control:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  outline-offset: 3px;
+}
+
+.switch-thumb {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+  transform: translateX(0);
+  transition: transform 160ms ease;
+}
+
+.switch-control.active .switch-thumb {
+  transform: translateX(20px);
+}
