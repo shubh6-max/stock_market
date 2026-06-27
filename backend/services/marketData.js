@@ -14,73 +14,169 @@ const SYMBOLS = {
   SGX_NIFTY: "^NSEI",
 };
 
+const QUOTE_CACHE_TTL_MS = Number(process.env.MARKET_QUOTE_CACHE_TTL_MS || 60_000);
+const CANDLE_CACHE_TTL_MS = Number(process.env.MARKET_CANDLE_CACHE_TTL_MS || 60_000);
+const DASHBOARD_CACHE_TTL_MS = Number(process.env.MARKET_DASHBOARD_CACHE_TTL_MS || 60_000);
+const QUOTE_THROTTLE_MS = Number(process.env.MARKET_QUOTE_THROTTLE_MS || 250);
+
+const quoteCache = new Map();
+const candleCache = new Map();
+let dashboardCache = null;
+let dashboardInFlight = null;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isFresh(cacheItem, ttlMs) {
+  return Boolean(cacheItem && Date.now() - cacheItem.at < ttlMs);
+}
+
+function getFreshCache(cache, key, ttlMs) {
+  const item = cache.get(key);
+  return isFresh(item, ttlMs) ? item.data : null;
+}
+
+function getStaleCache(cache, key) {
+  return cache.get(key)?.data ?? null;
+}
+
+function setCache(cache, key, data) {
+  cache.set(key, { at: Date.now(), data });
+  return data;
+}
+
+function simplifyYahooError(error) {
+  const raw = error?.message || String(error);
+  if (/too many requests/i.test(raw)) return "Yahoo Finance rate limit: Too Many Requests";
+  if (/Unexpected token/i.test(raw) && /Too Many Requests/i.test(raw)) return "Yahoo Finance rate limit: Too Many Requests";
+  return raw;
+}
+
+function isRateLimitError(error) {
+  return /too many requests/i.test(error?.message || String(error));
+}
+
+function normalizeQuote(symbol, q) {
+  return {
+    symbol,
+    price: q.regularMarketPrice,
+    change: q.regularMarketChange,
+    changePct: q.regularMarketChangePercent,
+    dayHigh: q.regularMarketDayHigh,
+    dayLow: q.regularMarketDayLow,
+    prevClose: q.regularMarketPreviousClose,
+    open: q.regularMarketOpen,
+    time: q.regularMarketTime,
+  };
+}
+
 export async function getSpotQuote(symbol) {
+  const cached = getFreshCache(quoteCache, symbol, QUOTE_CACHE_TTL_MS);
+  if (cached) return { ...cached, cached: true };
+
   try {
     const q = await yahooFinance.quote(symbol);
+<<<<<<< HEAD
     return mapQuoteToSpot(symbol, q);
+=======
+    return setCache(quoteCache, symbol, normalizeQuote(symbol, q));
+>>>>>>> fcf5df926648b35763a88d89b8bf9e65192ff3ec
   } catch (e) {
-    console.warn(`[market] quote ${symbol} failed: ${e.message}`);
-    return { symbol, error: e.message };
+    const message = simplifyYahooError(e);
+    const stale = getStaleCache(quoteCache, symbol);
+
+    if (stale) {
+      console.warn(`[market] quote ${symbol} failed (${message}); using stale cached quote`);
+      return {
+        ...stale,
+        stale: true,
+        error: message,
+        rate_limited: isRateLimitError(e),
+      };
+    }
+
+    console.warn(`[market] quote ${symbol} failed: ${message}`);
+    return { symbol, error: message, rate_limited: isRateLimitError(e) };
   }
 }
 
+function candleCacheKey(symbol, interval, days) {
+  return `${symbol}:${interval}:${days}`;
+}
+
+function normalizeCandles(quotes, requireOpen = false) {
+  return (quotes || [])
+    .filter((c) => c.close != null && (!requireOpen || c.open != null))
+    .map((c) => ({
+      time: c.date,
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume || 0,
+    }));
+}
+
 export async function get15mCandles(symbol, days = 5) {
+  const key = candleCacheKey(symbol, "15m", days);
+  const cached = getFreshCache(candleCache, key, CANDLE_CACHE_TTL_MS);
+  if (cached) return cached;
+
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+
   try {
     const res = await yahooFinance.chart(symbol, {
       period1: start,
       period2: end,
       interval: "15m",
     });
-    const quotes = res?.quotes || [];
-    const candles = quotes
-      .filter((c) => c.close != null && c.open != null)
-      .map((c) => ({
-        time: c.date,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume || 0,
-      }));
+    const candles = normalizeCandles(res?.quotes, true);
     if (candles.length === 0) console.warn(`[market] 15m candles for ${symbol}: empty response`);
-    return candles;
+    return setCache(candleCache, key, candles);
   } catch (e) {
-    console.warn(`[market] 15m candles ${symbol} failed: ${e.message}`);
+    const message = simplifyYahooError(e);
+    const stale = getStaleCache(candleCache, key);
+    if (stale) {
+      console.warn(`[market] 15m candles ${symbol} failed (${message}); using stale cached candles`);
+      return stale;
+    }
+    console.warn(`[market] 15m candles ${symbol} failed: ${message}`);
     return [];
   }
 }
 
 export async function getDailyCandles(symbol, days = 30) {
+  const key = candleCacheKey(symbol, "1d", days);
+  const cached = getFreshCache(candleCache, key, CANDLE_CACHE_TTL_MS);
+  if (cached) return cached;
+
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+
   try {
     const res = await yahooFinance.chart(symbol, {
       period1: start,
       period2: end,
       interval: "1d",
     });
-    const quotes = res?.quotes || [];
-    const candles = quotes
-      .filter((c) => c.close != null)
-      .map((c) => ({
-        time: c.date,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume || 0,
-      }));
+    const candles = normalizeCandles(res?.quotes);
     if (candles.length === 0) console.warn(`[market] daily candles for ${symbol}: empty response`);
-    return candles;
+    return setCache(candleCache, key, candles);
   } catch (e) {
-    console.warn(`[market] daily candles ${symbol} failed: ${e.message}`);
+    const message = simplifyYahooError(e);
+    const stale = getStaleCache(candleCache, key);
+    if (stale) {
+      console.warn(`[market] daily candles ${symbol} failed (${message}); using stale cached candles`);
+      return stale;
+    }
+    console.warn(`[market] daily candles ${symbol} failed: ${message}`);
     return [];
   }
 }
 
-export async function getDashboardSnapshot() {
+async function loadDashboardSnapshot() {
   const targets = [
     ["nifty", SYMBOLS.NIFTY],
     ["banknifty", SYMBOLS.BANKNIFTY],
@@ -90,6 +186,7 @@ export async function getDashboardSnapshot() {
     ["crude", SYMBOLS.CRUDE_BRENT],
     ["us10y", SYMBOLS.US10Y],
   ];
+<<<<<<< HEAD
   const out = {};
 
   try {
@@ -107,10 +204,48 @@ export async function getDashboardSnapshot() {
     targets.forEach(([key, symbol]) => {
       out[key] = { symbol, error: e.message };
     });
+=======
+
+  const out = {};
+
+  // Sequential calls reduce Yahoo rate-limit spikes compared with firing all quotes at once.
+  for (let i = 0; i < targets.length; i++) {
+    const [key, sym] = targets[i];
+    out[key] = await getSpotQuote(sym);
+    if (i < targets.length - 1) await sleep(QUOTE_THROTTLE_MS);
+>>>>>>> fcf5df926648b35763a88d89b8bf9e65192ff3ec
   }
 
   out.timestamp = new Date().toISOString();
+  const hasAnyPrice = targets.some(([key]) => out[key]?.price != null);
+
+  if (!hasAnyPrice && dashboardCache?.data) {
+    console.warn("[market] dashboard snapshot has no live prices; using stale cached dashboard snapshot");
+    return {
+      ...dashboardCache.data,
+      stale: true,
+      error: "Yahoo Finance rate limit or data-source failure. Showing last cached dashboard snapshot.",
+      timestamp: out.timestamp,
+    };
+  }
+
+  dashboardCache = { at: Date.now(), data: out };
   return out;
+}
+
+export async function getDashboardSnapshot() {
+  if (isFresh(dashboardCache, DASHBOARD_CACHE_TTL_MS)) {
+    return { ...dashboardCache.data, cached: true };
+  }
+
+  if (dashboardInFlight) return dashboardInFlight;
+
+  dashboardInFlight = loadDashboardSnapshot()
+    .finally(() => {
+      dashboardInFlight = null;
+    });
+
+  return dashboardInFlight;
 }
 
 export function symbolFor(instrument) {
