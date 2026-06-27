@@ -6,6 +6,7 @@ import multer from "multer";
 import { getDashboardSnapshot, get15mCandles, getDailyCandles, symbolFor, assessDataQuality } from "./services/marketData.js";
 import { computeAll } from "./services/indicators.js";
 import { fetchOptionChain } from "./services/optionChain.js";
+import { registerKiteRoutes } from "./routes/kiteRoutes.js";
 
 import { runVisionAgent } from "./agents/visionAgent.js";
 import { runMacroAgent } from "./agents/macroAgent.js";
@@ -24,6 +25,8 @@ import { adjustConfidence, insights as learningInsights } from "./services/learn
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
+
+registerKiteRoutes(app);
 
 const upload = multer({
   storage: multer.memoryStorage(),
