@@ -17,17 +17,7 @@ const SYMBOLS = {
 export async function getSpotQuote(symbol) {
   try {
     const q = await yahooFinance.quote(symbol);
-    return {
-      symbol,
-      price: q.regularMarketPrice,
-      change: q.regularMarketChange,
-      changePct: q.regularMarketChangePercent,
-      dayHigh: q.regularMarketDayHigh,
-      dayLow: q.regularMarketDayLow,
-      prevClose: q.regularMarketPreviousClose,
-      open: q.regularMarketOpen,
-      time: q.regularMarketTime,
-    };
+    return mapQuoteToSpot(symbol, q);
   } catch (e) {
     console.warn(`[market] quote ${symbol} failed: ${e.message}`);
     return { symbol, error: e.message };
@@ -100,9 +90,25 @@ export async function getDashboardSnapshot() {
     ["crude", SYMBOLS.CRUDE_BRENT],
     ["us10y", SYMBOLS.US10Y],
   ];
-  const results = await Promise.all(targets.map(([_, sym]) => getSpotQuote(sym)));
   const out = {};
-  targets.forEach(([key], i) => { out[key] = results[i]; });
+
+  try {
+    const symbols = targets.map(([_, symbol]) => symbol);
+    const quotes = await yahooFinance.quote(symbols, { return: "object" });
+
+    targets.forEach(([key, symbol]) => {
+      const quote = quotes?.[symbol];
+      out[key] = quote
+        ? mapQuoteToSpot(symbol, quote)
+        : { symbol, error: "quote missing from Yahoo response" };
+    });
+  } catch (e) {
+    console.warn(`[market] dashboard batch quote failed: ${e.message}`);
+    targets.forEach(([key, symbol]) => {
+      out[key] = { symbol, error: e.message };
+    });
+  }
+
   out.timestamp = new Date().toISOString();
   return out;
 }
@@ -151,3 +157,17 @@ export function assessDataQuality({ snapshot, indicators, optionChainOk, candles
 }
 
 export { SYMBOLS };
+
+function mapQuoteToSpot(symbol, quote) {
+  return {
+    symbol,
+    price: quote.regularMarketPrice,
+    change: quote.regularMarketChange,
+    changePct: quote.regularMarketChangePercent,
+    dayHigh: quote.regularMarketDayHigh,
+    dayLow: quote.regularMarketDayLow,
+    prevClose: quote.regularMarketPreviousClose,
+    open: quote.regularMarketOpen,
+    time: quote.regularMarketTime,
+  };
+}
