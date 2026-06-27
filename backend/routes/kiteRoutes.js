@@ -9,6 +9,7 @@ import {
   kiteLtp,
   kiteHistorical,
 } from "../services/kiteConnect.js";
+import { getKiteMarketSnapshot } from "../services/kiteMarketData.js";
 
 function sendError(res, error) {
   const status = /missing|required|not authenticated/i.test(error.message) ? 400 : 500;
@@ -23,6 +24,17 @@ function appUrl(status = "connected") {
 }
 
 export function registerKiteRoutes(app) {
+  // This route is registered before the legacy Yahoo /api/market route in server.js,
+  // so the live dashboard now uses Kite when MARKET_DATA_PROVIDER=kite.
+  app.get("/api/market", async (_req, res, next) => {
+    if ((process.env.MARKET_DATA_PROVIDER || "").toLowerCase() !== "kite") return next();
+    try {
+      res.json(await getKiteMarketSnapshot());
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   app.get("/api/kite/status", (_req, res) => {
     try {
       res.json({ ok: true, ...kiteStatus() });
