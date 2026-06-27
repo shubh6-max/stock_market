@@ -1,0 +1,17 @@
+.mission-banner {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.mission-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mission-stat {
+  min-height: 132px;
+}
+
+@media (max-width: 900px) {
+  .mission-stats {
+    grid-template-columns: 1fr;
+  }
+}
