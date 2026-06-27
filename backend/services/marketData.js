@@ -18,11 +18,14 @@ const QUOTE_CACHE_TTL_MS = Number(process.env.MARKET_QUOTE_CACHE_TTL_MS || 60_00
 const CANDLE_CACHE_TTL_MS = Number(process.env.MARKET_CANDLE_CACHE_TTL_MS || 60_000);
 const DASHBOARD_CACHE_TTL_MS = Number(process.env.MARKET_DASHBOARD_CACHE_TTL_MS || 60_000);
 const QUOTE_THROTTLE_MS = Number(process.env.MARKET_QUOTE_THROTTLE_MS || 250);
+const YAHOO_RATE_LIMIT_COOLDOWN_MS = Number(process.env.YAHOO_RATE_LIMIT_COOLDOWN_MS || 5 * 60_000);
+const MARKET_DATA_MODE = (process.env.MARKET_DATA_MODE || "live").toLowerCase();
 
 const quoteCache = new Map();
 const candleCache = new Map();
 let dashboardCache = null;
 let dashboardInFlight = null;
+let yahooBlockedUntil = 0;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,6 +60,16 @@ function isRateLimitError(error) {
   return /too many requests/i.test(error?.message || String(error));
 }
 
+function isYahooBlocked() {
+  return Date.now() < yahooBlockedUntil;
+}
+
+function blockYahooTemporarily(reason) {
+  yahooBlockedUntil = Date.now() + YAHOO_RATE_LIMIT_COOLDOWN_MS;
+  const retryAt = new Date(yahooBlockedUntil).toLocaleTimeString("en-IN");
+  console.warn(`[market] Yahoo Finance paused until ${retryAt}: ${reason}`);
+}
+
 function mapQuoteToSpot(symbol, quote) {
   return {
     symbol,
@@ -68,6 +81,24 @@ function mapQuoteToSpot(symbol, quote) {
     prevClose: quote.regularMarketPreviousClose,
     open: quote.regularMarketOpen,
     time: quote.regularMarketTime,
+    source: "yahoo",
+  };
+}
+
+function unavailableQuote(symbol, message = "Market data temporarily unavailable") {
+  return {
+    symbol,
+    price: null,
+    change: null,
+    changePct: null,
+    dayHigh: null,
+    dayLow: null,
+    prevClose: null,
+    open: null,
+    time: null,
+    unavailable: true,
+    rate_limited: /rate limit|too many requests/i.test(message),
+    error: message,
   };
 }
 
@@ -75,12 +106,26 @@ export async function getSpotQuote(symbol) {
   const cached = getFreshCache(quoteCache, symbol, QUOTE_CACHE_TTL_MS);
   if (cached) return { ...cached, cached: true };
 
+  const stale = getStaleCache(quoteCache, symbol);
+  if (MARKET_DATA_MODE === "offline") {
+    return stale ? { ...stale, stale: true, offline: true } : unavailableQuote(symbol, "Market data offline mode enabled");
+  }
+
+  if (isYahooBlocked()) {
+    return stale
+      ? { ...stale, stale: true, error: "Yahoo Finance rate-limit cooldown active" }
+      : unavailableQuote(symbol, "Yahoo Finance rate-limit cooldown active");
+  }
+
   try {
     const q = await yahooFinance.quote(symbol);
     return setCache(quoteCache, symbol, mapQuoteToSpot(symbol, q));
   } catch (e) {
     const message = simplifyYahooError(e);
-    const stale = getStaleCache(quoteCache, symbol);
+
+    if (isRateLimitError(e)) {
+      blockYahooTemporarily(message);
+    }
 
     if (stale) {
       console.warn(`[market] quote ${symbol} failed (${message}); using stale cached quote`);
@@ -93,7 +138,7 @@ export async function getSpotQuote(symbol) {
     }
 
     console.warn(`[market] quote ${symbol} failed: ${message}`);
-    return { symbol, error: message, rate_limited: isRateLimitError(e) };
+    return unavailableQuote(symbol, message);
   }
 }
 
@@ -119,6 +164,9 @@ export async function get15mCandles(symbol, days = 5) {
   const cached = getFreshCache(candleCache, key, CANDLE_CACHE_TTL_MS);
   if (cached) return cached;
 
+  const stale = getStaleCache(candleCache, key);
+  if (MARKET_DATA_MODE === "offline" || isYahooBlocked()) return stale || [];
+
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
 
@@ -133,7 +181,7 @@ export async function get15mCandles(symbol, days = 5) {
     return setCache(candleCache, key, candles);
   } catch (e) {
     const message = simplifyYahooError(e);
-    const stale = getStaleCache(candleCache, key);
+    if (isRateLimitError(e)) blockYahooTemporarily(message);
     if (stale) {
       console.warn(`[market] 15m candles ${symbol} failed (${message}); using stale cached candles`);
       return stale;
@@ -147,6 +195,9 @@ export async function getDailyCandles(symbol, days = 30) {
   const key = candleCacheKey(symbol, "1d", days);
   const cached = getFreshCache(candleCache, key, CANDLE_CACHE_TTL_MS);
   if (cached) return cached;
+
+  const stale = getStaleCache(candleCache, key);
+  if (MARKET_DATA_MODE === "offline" || isYahooBlocked()) return stale || [];
 
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
@@ -162,7 +213,7 @@ export async function getDailyCandles(symbol, days = 30) {
     return setCache(candleCache, key, candles);
   } catch (e) {
     const message = simplifyYahooError(e);
-    const stale = getStaleCache(candleCache, key);
+    if (isRateLimitError(e)) blockYahooTemporarily(message);
     if (stale) {
       console.warn(`[market] daily candles ${symbol} failed (${message}); using stale cached candles`);
       return stale;
@@ -189,7 +240,12 @@ async function loadDashboardSnapshot() {
   for (let i = 0; i < targets.length; i++) {
     const [key, symbol] = targets[i];
     out[key] = await getSpotQuote(symbol);
+    if (isYahooBlocked()) break;
     if (i < targets.length - 1) await sleep(QUOTE_THROTTLE_MS);
+  }
+
+  for (const [key, symbol] of targets) {
+    if (!out[key]) out[key] = unavailableQuote(symbol, "Yahoo Finance rate-limit cooldown active");
   }
 
   out.timestamp = new Date().toISOString();
@@ -203,6 +259,11 @@ async function loadDashboardSnapshot() {
       error: "Yahoo Finance rate limit or data-source failure. Showing last cached dashboard snapshot.",
       timestamp: out.timestamp,
     };
+  }
+
+  out.degraded = !hasAnyPrice;
+  if (out.degraded) {
+    out.error = "Yahoo Finance is rate-limiting this IP. Market snapshot is temporarily unavailable.";
   }
 
   dashboardCache = { at: Date.now(), data: out };
