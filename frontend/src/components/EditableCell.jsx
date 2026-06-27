@@ -16,7 +16,7 @@ export default function EditableCell({
   value,
   type = "number",
   step = "any",
-  placeholder = "—",
+  placeholder = "--",
   prefix = "",
   onSave,
   format,
@@ -26,8 +26,13 @@ export default function EditableCell({
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
 
-  useEffect(() => { setDraft(value ?? ""); }, [value]);
-  useEffect(() => { if (editing && inputRef.current) inputRef.current.select(); }, [editing]);
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.select();
+  }, [editing]);
 
   async function commit() {
     if (!editing || busy) return;
@@ -36,7 +41,11 @@ export default function EditableCell({
     setEditing(false);
     if (next === (value ?? null)) return;
     setBusy(true);
-    try { await onSave(next); } finally { setBusy(false); }
+    try {
+      await onSave(next);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function cancel() {
@@ -52,10 +61,10 @@ export default function EditableCell({
         type={type}
         step={step}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-          else if (e.key === "Escape") cancel();
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit();
+          else if (event.key === "Escape") cancel();
         }}
         onBlur={commit}
         autoFocus
@@ -70,11 +79,14 @@ export default function EditableCell({
   return (
     <span
       className={`cell-editable ${busy ? "busy" : ""}`}
-      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      onClick={(event) => {
+        event.stopPropagation();
+        setEditing(true);
+      }}
       title="Click to edit"
     >
       {display}
-      {busy && <span className="cell-spin">…</span>}
+      {busy && <span className="cell-spin">...</span>}
     </span>
   );
 }

@@ -10,13 +10,13 @@ import RiskPanel from "../components/RiskPanel.jsx";
 import DataQualityBanner from "../components/DataQualityBanner.jsx";
 
 const INITIAL_STEPS = [
-  { key: "data", label: "Fetch live spot, OHLC, macro from Yahoo Finance", status: "idle" },
-  { key: "vision", label: "Vision Analyst — chart pattern reading", status: "idle" },
-  { key: "macro", label: "Macro Strategist — DXY / VIX / crude scan", status: "idle" },
-  { key: "options", label: "Options Agent — PCR, max pain, OI buildup", status: "idle" },
-  { key: "strategist", label: "Strategist — comparing setups + risk math", status: "idle" },
-  { key: "confidence", label: "Confidence Agent — weighted scoring + learning", status: "idle" },
-  { key: "explanation", label: "Explanation Agent — your final brief", status: "idle" },
+  { key: "data", label: "Fetch live spot, OHLC, and macro context", status: "idle" },
+  { key: "vision", label: "Read chart structure from the uploaded image", status: "idle" },
+  { key: "macro", label: "Interpret volatility, dollar, and crude regime", status: "idle" },
+  { key: "options", label: "Parse PCR, max pain, and open-interest build-up", status: "idle" },
+  { key: "strategist", label: "Combine setup quality with risk sizing rules", status: "idle" },
+  { key: "confidence", label: "Score conviction using history and weighting", status: "idle" },
+  { key: "explanation", label: "Translate the result into the final brief", status: "idle" },
 ];
 
 export default function Analyzer({ snapshot }) {
@@ -24,16 +24,11 @@ export default function Analyzer({ snapshot }) {
   const [niftyPreview, setNiftyPreview] = useState(null);
   const [bankFile, setBankFile] = useState(null);
   const [bankPreview, setBankPreview] = useState(null);
-
   const [busy, setBusy] = useState(false);
-
-  // settings
   const [capital, setCapital] = useState(300000);
   const [riskPct, setRiskPct] = useState(1);
   const [mode, setMode] = useState("BEGINNER");
   const [overnight, setOvernight] = useState(false);
-
-  // pipeline state
   const [steps, setSteps] = useState(INITIAL_STEPS);
   const [marketCtx, setMarketCtx] = useState(null);
   const [visionData, setVisionData] = useState(null);
@@ -48,9 +43,9 @@ export default function Analyzer({ snapshot }) {
   const [stepTimes, setStepTimes] = useState({});
 
   function updateStep(key, status) {
-    setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, status } : s)));
-    if (status === "active") setStepTimes((t) => ({ ...t, [key]: Date.now() }));
-    if (status === "done") setStepTimes((t) => ({ ...t, [key + "_end"]: Date.now() }));
+    setSteps((prev) => prev.map((step) => (step.key === key ? { ...step, status } : step)));
+    if (status === "active") setStepTimes((prev) => ({ ...prev, [key]: Date.now() }));
+    if (status === "done") setStepTimes((prev) => ({ ...prev, [`${key}_end`]: Date.now() }));
   }
 
   function reset() {
@@ -73,30 +68,33 @@ export default function Analyzer({ snapshot }) {
     reset();
     setBusy(true);
 
-    const fd = new FormData();
-    if (niftyFile) fd.append("chart_nifty", niftyFile);
-    if (bankFile) fd.append("chart_banknifty", bankFile);
-    fd.append("capital", String(capital));
-    fd.append("riskPct", String(riskPct));
-    fd.append("mode", mode);
-    fd.append("overnight", String(overnight));
+    const formData = new FormData();
+    if (niftyFile) formData.append("chart_nifty", niftyFile);
+    if (bankFile) formData.append("chart_banknifty", bankFile);
+    formData.append("capital", String(capital));
+    formData.append("riskPct", String(riskPct));
+    formData.append("mode", mode);
+    formData.append("overnight", String(overnight));
 
     try {
-      const res = await fetch("/api/analyze", { method: "POST", body: fd });
-      if (!res.body) throw new Error("Streaming not supported");
-      const reader = res.body.getReader();
+      const response = await fetch("/api/analyze", { method: "POST", body: formData });
+      if (!response.body) throw new Error("Streaming not supported");
+
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buf = "";
+      let buffer = "";
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const events = buf.split("\n\n");
-        buf = events.pop() || "";
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
         for (const block of events) handleEvent(block);
       }
-    } catch (e) {
-      setError(e.message || String(e));
+    } catch (eventError) {
+      setError(eventError.message || String(eventError));
     } finally {
       setBusy(false);
     }
@@ -104,111 +102,179 @@ export default function Analyzer({ snapshot }) {
 
   function handleEvent(block) {
     const lines = block.split("\n");
-    let event = "message", data = "";
-    for (const l of lines) {
-      if (l.startsWith("event: ")) event = l.slice(7).trim();
-      else if (l.startsWith("data: ")) data += l.slice(6);
+    let event = "message";
+    let data = "";
+
+    for (const line of lines) {
+      if (line.startsWith("event: ")) event = line.slice(7).trim();
+      else if (line.startsWith("data: ")) data += line.slice(6);
     }
+
     let payload;
-    try { payload = JSON.parse(data); } catch { return; }
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return;
+    }
 
     if (event === "status") updateStep(payload.step, "active");
-    else if (event === "market") { setMarketCtx(payload); updateStep("data", "done"); }
-    else if (event === "vision") { setVisionData(payload); updateStep("vision", "done"); }
-    else if (event === "macro") { setMacroText(payload.text); updateStep("macro", "done"); }
-    else if (event === "options") { setOptionsData(payload); updateStep("options", "done"); }
-    else if (event === "strategist") { setStrategist(payload); updateStep("strategist", "done"); }
-    else if (event === "confidence") {
+    else if (event === "market") {
+      setMarketCtx(payload);
+      updateStep("data", "done");
+    } else if (event === "vision") {
+      setVisionData(payload);
+      updateStep("vision", "done");
+    } else if (event === "macro") {
+      setMacroText(payload.text);
+      updateStep("macro", "done");
+    } else if (event === "options") {
+      setOptionsData(payload);
+      updateStep("options", "done");
+    } else if (event === "strategist") {
+      setStrategist(payload);
+      updateStep("strategist", "done");
+    } else if (event === "confidence") {
       setConfidence(payload.confidence);
       setAdjustment(payload.adjustment);
       updateStep("confidence", "done");
-    }
-    else if (event === "explanation") { setExplanation(payload); updateStep("explanation", "done"); }
-    else if (event === "persisted") setPersistedId(payload.id);
-    else if (event === "error") {
+    } else if (event === "explanation") {
+      setExplanation(payload);
+      updateStep("explanation", "done");
+    } else if (event === "persisted") {
+      setPersistedId(payload.id);
+    } else if (event === "error") {
       setError(payload.message);
-      setSteps((prev) => prev.map((s) => (s.status === "active" ? { ...s, status: "error" } : s)));
+      setSteps((prev) => prev.map((step) => (step.status === "active" ? { ...step, status: "error" } : step)));
     }
   }
 
   const isNoTrade = strategist?.data?.decision === "NO_TRADE" || explanation?.no_trade;
   const chosenInstrument = strategist?.data?.instrument || "NIFTY";
+  const uploadedCount = Number(Boolean(niftyFile)) + Number(Boolean(bankFile));
+  const riskBudget = Math.round((capital * riskPct) / 100);
 
   return (
-    <div className="grid">
-      {/* LEFT — SETTINGS + UPLOADER */}
-      <div>
-        <div className="card">
-          <h2><span className="num">1</span> Configure</h2>
-          <SettingsPanel
-            capital={capital} setCapital={setCapital}
-            riskPct={riskPct} setRiskPct={setRiskPct}
-            mode={mode} setMode={setMode}
-            overnight={overnight} setOvernight={setOvernight}
-          />
+    <div className="page-stack">
+      <section className="mission-banner">
+        <div className="mission-copy">
+          <div className="section-kicker">Workflow</div>
+          <h3>Market context, chart evidence, risk math, then execution.</h3>
+          <p>
+            The analyzer compares NIFTY and BANKNIFTY setups, streams each agent stage, and only returns a trade when the confluence clears the confidence bar.
+          </p>
         </div>
 
-        <div className="card" style={{ marginTop: 16 }}>
-          <h2><span className="num">2</span> Upload charts</h2>
-          <DualChartUploader
-            niftyFile={niftyFile} niftyPreview={niftyPreview}
-            bankFile={bankFile} bankPreview={bankPreview}
-            onNifty={(f, u) => { setNiftyFile(f); setNiftyPreview(u); }}
-            onBank={(f, u) => { setBankFile(f); setBankPreview(u); }}
-            onClearNifty={() => { setNiftyFile(null); setNiftyPreview(null); }}
-            onClearBank={() => { setBankFile(null); setBankPreview(null); }}
-          />
-          <button className="btn-primary" disabled={(!niftyFile && !bankFile) || busy} onClick={analyze}>
-            {busy ? "Analyzing live data + charts…" : "⚡ Generate trade signal"}
-          </button>
-          {(niftyFile || bankFile) && !busy && <button className="btn-ghost" onClick={reset}>Clear results</button>}
-          {error && <div className="banner-warning">⚠ {error}</div>}
-          <div className="banner-info">
-            ⓘ Upload one or both. System picks the cleaner setup — or returns NO TRADE if neither is good enough.
+        <div className="mission-stats">
+          <div className="mission-stat">
+            <span className="mission-stat-label">Risk budget</span>
+            <strong>₹{riskBudget.toLocaleString("en-IN")}</strong>
+            <span className="mission-stat-detail">Per trade at {riskPct.toFixed(2)}%</span>
+          </div>
+          <div className="mission-stat">
+            <span className="mission-stat-label">Charts loaded</span>
+            <strong>{uploadedCount}/2</strong>
+            <span className="mission-stat-detail">
+              {uploadedCount === 2 ? "Cross-market comparison ready" : "Upload one or both markets"}
+            </span>
+          </div>
+          <div className="mission-stat">
+            <span className="mission-stat-label">Output style</span>
+            <strong>{mode === "ADVANCED" ? "Desk view" : "Guided"}</strong>
+            <span className="mission-stat-detail">{overnight ? "Positional trades allowed" : "Intraday discipline enforced"}</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* RIGHT — PIPELINE + RESULTS */}
-      <div>
-        <div className="card">
-          <h2><span className="num">3</span> Agent pipeline</h2>
-          <DataQualityBanner market={marketCtx} />
-          <MarketContext market={marketCtx} snapshot={snapshot} instrument={chosenInstrument} />
-          <AgentTimeline steps={steps} times={stepTimes} />
+      <div className="grid analyzer-grid">
+        <div className="stack-col">
+          <div className="card">
+            <h2><span className="num">1</span> Strategy controls</h2>
+            <SettingsPanel
+              capital={capital}
+              setCapital={setCapital}
+              riskPct={riskPct}
+              setRiskPct={setRiskPct}
+              mode={mode}
+              setMode={setMode}
+              overnight={overnight}
+              setOvernight={setOvernight}
+            />
+          </div>
+
+          <div className="card">
+            <h2><span className="num">2</span> Chart intake</h2>
+            <DualChartUploader
+              niftyFile={niftyFile}
+              niftyPreview={niftyPreview}
+              bankFile={bankFile}
+              bankPreview={bankPreview}
+              onNifty={(file, url) => {
+                setNiftyFile(file);
+                setNiftyPreview(url);
+              }}
+              onBank={(file, url) => {
+                setBankFile(file);
+                setBankPreview(url);
+              }}
+              onClearNifty={() => {
+                setNiftyFile(null);
+                setNiftyPreview(null);
+              }}
+              onClearBank={() => {
+                setBankFile(null);
+                setBankPreview(null);
+              }}
+            />
+            <button className="btn-primary" disabled={(!niftyFile && !bankFile) || busy} onClick={analyze}>
+              {busy ? "Running live analysis..." : "Generate trade brief"}
+            </button>
+            {(niftyFile || bankFile) && !busy && <button className="btn-ghost" onClick={reset}>Reset workspace</button>}
+            {error && <div className="banner-warning">{error}</div>}
+            <div className="banner-info">
+              Upload one or both markets. The system chooses the cleaner setup, or returns a no-trade verdict when the tape is not worth the risk.
+            </div>
+          </div>
         </div>
 
-        {isNoTrade && explanation && (
-          <NoTradeCard explanation={explanation} strategist={strategist} mode={mode} />
-        )}
+        <div className="stack-col">
+          <div className="card">
+            <h2><span className="num">3</span> Agent pipeline</h2>
+            <DataQualityBanner market={marketCtx} />
+            <MarketContext market={marketCtx} snapshot={snapshot} instrument={chosenInstrument} />
+            <AgentTimeline steps={steps} times={stepTimes} />
+          </div>
 
-        {!isNoTrade && explanation && (
-          <>
-            {confidence && (
-              <ConfidenceMeter
-                confidence={confidence}
-                adjustment={adjustment}
+          {!explanation && !busy && !error && (
+            <div className="card empty-state-card">
+              <div className="section-kicker">Awaiting run</div>
+              <h3>Load the market, then let the pipeline score the setup.</h3>
+              <div className="empty-state-list">
+                <div>Set your capital and risk so the strategist can size lots correctly.</div>
+                <div>Upload one or two 15-minute chart screenshots with visible structure and key levels.</div>
+                <div>Wait for the full agent pass before acting on the brief.</div>
+              </div>
+            </div>
+          )}
+
+          {isNoTrade && explanation && <NoTradeCard explanation={explanation} strategist={strategist} mode={mode} />}
+
+          {!isNoTrade && explanation && (
+            <>
+              {confidence && <ConfidenceMeter confidence={confidence} adjustment={adjustment} />}
+              {strategist?.data && <RiskPanel strategist={strategist.data} capital={capital} riskPct={riskPct} />}
+              <TradeCard
+                explanation={explanation}
+                strategist={strategist}
+                vision={visionData}
+                macro={macroText}
+                options={optionsData}
+                marketCtx={marketCtx}
+                mode={mode}
+                persistedId={persistedId}
               />
-            )}
-            {strategist?.data && (
-              <RiskPanel
-                strategist={strategist.data}
-                capital={capital}
-                riskPct={riskPct}
-              />
-            )}
-            <TradeCard
-              explanation={explanation}
-              strategist={strategist}
-              vision={visionData}
-              macro={macroText}
-              options={optionsData}
-              marketCtx={marketCtx}
-              mode={mode}
-              persistedId={persistedId}
-            />
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

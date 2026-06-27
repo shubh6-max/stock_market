@@ -1,31 +1,32 @@
 export default function DataQualityBanner({ market }) {
-  const dq = market?.data_quality;
-  if (!dq) return null;
-  if (dq.band === "good") return null; // hide when everything's fine
+  const dataQuality = market?.data_quality;
+  if (!dataQuality || dataQuality.band === "good") return null;
 
   const color =
-    dq.band === "poor" ? "var(--red)" :
-    dq.band === "partial" ? "var(--amber)" : "var(--green)";
+    dataQuality.band === "poor" ? "var(--red)" :
+    dataQuality.band === "partial" ? "var(--amber)" : "var(--green)";
 
   const headline =
-    dq.band === "poor"
-      ? `⚠ Data quality poor (${dq.score}/100) — analysis will lean almost entirely on the chart image.`
-      : `ℹ Data partially available (${dq.score}/100) — chart will be the primary signal.`;
+    dataQuality.band === "poor"
+      ? `Data quality is weak (${dataQuality.score}/100). The analysis will lean heavily on the chart image.`
+      : `Data is partially available (${dataQuality.score}/100). The chart will be the primary signal.`;
 
-  const allIssues = Array.from(new Set(
-    Object.values(dq.per_instrument || {}).flatMap((d) => d.issues || [])
-  ));
+  const allIssues = Array.from(
+    new Set(Object.values(dataQuality.per_instrument || {}).flatMap((item) => item.issues || [])),
+  );
 
   return (
     <div className="dq-banner" style={{ borderColor: color, color }}>
       <div className="dq-headline">{headline}</div>
       {allIssues.length > 0 && (
         <ul className="dq-list">
-          {allIssues.map((i, idx) => <li key={idx}>{i}</li>)}
+          {allIssues.map((issue, index) => (
+            <li key={index}>{issue}</li>
+          ))}
         </ul>
       )}
       <div className="dq-hint">
-        💡 Tip: include <strong>VWAP</strong>, <strong>EMA 21</strong>, <strong>CPR</strong> and <strong>previous-day high/low</strong> on the chart screenshot so the Vision Agent can read them visually when the data feed is down.
+        Include <strong>VWAP</strong>, <strong>EMA 21</strong>, <strong>CPR</strong>, and <strong>previous-day high/low</strong> on the chart so the vision model can recover context when the live feed is thin.
       </div>
     </div>
   );
