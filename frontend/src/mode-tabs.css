@@ -1,0 +1,45 @@
+.mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.mode-tab {
+  min-height: 74px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mode-tab.active {
+  border-color: var(--accent);
+  background: rgba(239, 246, 255, 0.98);
+}
+
+.mode-tab span {
+  display: block;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.mode-tab small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.mode-tab.active span {
+  color: var(--accent);
+}
+
+@media (max-width: 780px) {
+  .mode-tabs {
+    grid-template-columns: 1fr;
+  }
+}
