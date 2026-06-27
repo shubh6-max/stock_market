@@ -15,6 +15,13 @@ function sendError(res, error) {
   res.status(status).json({ ok: false, error: error.message });
 }
 
+function appUrl(status = "connected") {
+  const base = process.env.FRONTEND_URL || "http://localhost:5173";
+  const url = new URL(base);
+  url.searchParams.set("kite", status);
+  return url.toString();
+}
+
 export function registerKiteRoutes(app) {
   app.get("/api/kite/status", (_req, res) => {
     try {
@@ -36,22 +43,20 @@ export function registerKiteRoutes(app) {
 
   app.get("/api/kite/callback", async (req, res) => {
     try {
-      if (req.query.status && req.query.status !== "success") {
-        return res.status(400).send(`<h2>Kite login failed</h2><p>Status: ${req.query.status}</p>`);
+      // If user opens the callback URL directly, start the Kite login flow.
+      if (!req.query.request_token && !req.query.status) {
+        return res.redirect("/api/kite/login?redirect=true");
       }
 
-      const session = await kiteCallback(req.query.request_token);
-      res.send(`
-        <html>
-          <body style="font-family: system-ui; padding: 32px;">
-            <h2>Kite connected successfully</h2>
-            <p>User: ${session.user_shortname || session.user_name || session.user_id}</p>
-            <p>You can close this tab and return to StrikePilot.</p>
-          </body>
-        </html>
-      `);
+      if (req.query.status && req.query.status !== "success") {
+        return res.redirect(appUrl("failed"));
+      }
+
+      await kiteCallback(req.query.request_token);
+      return res.redirect(appUrl("connected"));
     } catch (error) {
-      res.status(500).send(`<h2>Kite callback error</h2><pre>${error.message}</pre>`);
+      console.error("[kite] callback error", error);
+      return res.redirect(appUrl("error"));
     }
   });
 
