@@ -5,6 +5,7 @@ import BrandMark from "./components/BrandMark.jsx";
 import Analyzer from "./pages/Analyzer.jsx";
 import Journal from "./pages/Journal.jsx";
 import Performance from "./pages/Performance.jsx";
+import SwingTrading from "./pages/SwingTrading.jsx";
 
 const MARKET_POLL_MS = 60_000;
 
@@ -43,19 +44,21 @@ function getPulse(snapshot) {
   const nifty = snapshot?.nifty?.changePct ?? 0;
   const bank = snapshot?.banknifty?.changePct ?? 0;
 
-  if (vix >= 18 || Math.abs(nifty) >= 1 || Math.abs(bank) >= 1) {
-    return { label: "High-volatility session", tone: "warn" };
-  }
-  if (nifty >= 0 && bank >= 0) {
-    return { label: "Risk-on tape", tone: "positive" };
-  }
-  if (nifty < 0 && bank < 0) {
-    return { label: "Risk-off tape", tone: "negative" };
-  }
+  if (snapshot?.requires_login) return { label: "Kite login required", tone: "warn" };
+  if (vix >= 18 || Math.abs(nifty) >= 1 || Math.abs(bank) >= 1) return { label: "High-volatility session", tone: "warn" };
+  if (nifty >= 0 && bank >= 0) return { label: "Risk-on tape", tone: "positive" };
+  if (nifty < 0 && bank < 0) return { label: "Risk-off tape", tone: "negative" };
   return { label: "Mixed market breadth", tone: "neutral" };
 }
 
+function statusTone(snapshot) {
+  if (snapshot?.market_status?.state === "live") return "positive";
+  if (snapshot?.market_status?.state === "preopen") return "warn";
+  return "neutral";
+}
+
 export default function App() {
+  const [mode, setMode] = useState("intraday");
   const [tab, setTab] = useState("analyzer");
   const [snapshot, setSnapshot] = useState(null);
   const pollRef = useRef(null);
@@ -76,6 +79,10 @@ export default function App() {
 
   const pulse = getPulse(snapshot);
   const activeTab = TAB_META[tab];
+  const marketTone = statusTone(snapshot);
+  const marketLabel = snapshot?.market_status?.label || "Checking market";
+  const sourceLabel = snapshot?.source === "kite" ? "Live Kite Connect context" : "Market context";
+  const isIntraday = mode === "intraday";
   const summaryCards = [
     {
       label: "NIFTY",
@@ -96,10 +103,10 @@ export default function App() {
       tone: (snapshot?.indiavix?.changePct ?? 0) >= 0 ? "warn" : "neutral",
     },
     {
-      label: "Macro pulse",
-      value: pulse.label,
-      detail: snapshot ? "Derived from breadth and VIX" : "Waiting for feed",
-      tone: pulse.tone,
+      label: isIntraday ? "Market Status" : "Swing Regime",
+      value: isIntraday ? marketLabel : pulse.label,
+      detail: isIntraday ? snapshot?.market_status?.detail || "Waiting for feed" : "Used for multi-day stock setup filter",
+      tone: isIntraday ? marketTone : pulse.tone,
     },
   ];
 
@@ -111,19 +118,31 @@ export default function App() {
           <div className="brand-block">
             <BrandMark size={52} />
             <div className="brand-copy">
-              <div className="eyebrow">Intraday options decision desk</div>
+              <div className="eyebrow">AI market decision desk</div>
               <h1>StrikePilot</h1>
               <p className="app-lede">
-                Deterministic market context, chart intelligence, option-chain flow, and strict risk sizing in one workspace.
+                Separate workflows for intraday options and swing trading, powered by live Kite market context and strict risk controls.
               </p>
             </div>
           </div>
 
           <div className="header-badges">
+            <span className={`status-pill ${marketTone}`}>{marketLabel}</span>
             <span className={`status-pill ${pulse.tone}`}>{pulse.label}</span>
-            <span className="status-pill subtle">Live Yahoo Finance and NSE context</span>
+            <span className="status-pill subtle">{sourceLabel}</span>
           </div>
         </header>
+
+        <section className="mode-tabs" aria-label="Trading mode">
+          <button className={`mode-tab ${mode === "intraday" ? "active" : ""}`} onClick={() => setMode("intraday")} type="button">
+            <span>Intraday Options</span>
+            <small>NIFTY / BANKNIFTY decision desk</small>
+          </button>
+          <button className={`mode-tab ${mode === "swing" ? "active" : ""}`} onClick={() => setMode("swing")} type="button">
+            <span>Swing Trading</span>
+            <small>Stock scanner and setup scoring</small>
+          </button>
+        </section>
 
         <section className="hero-stats">
           {summaryCards.map((card) => (
@@ -135,20 +154,33 @@ export default function App() {
           ))}
         </section>
 
-        <section className="workspace-shell">
-          <div className="workspace-heading">
-            <div>
-              <div className="workspace-label">Workspace</div>
-              <h2>{activeTab.title}</h2>
-              <p>{activeTab.description}</p>
+        {isIntraday ? (
+          <section className="workspace-shell">
+            <div className="workspace-heading">
+              <div>
+                <div className="workspace-label">Intraday Options</div>
+                <h2>{activeTab.title}</h2>
+                <p>{activeTab.description}</p>
+              </div>
+              <Nav tab={tab} setTab={setTab} />
             </div>
-            <Nav tab={tab} setTab={setTab} />
-          </div>
 
-          {tab === "analyzer" && <Analyzer snapshot={snapshot} />}
-          {tab === "journal" && <Journal />}
-          {tab === "performance" && <Performance />}
-        </section>
+            {tab === "analyzer" && <Analyzer snapshot={snapshot} />}
+            {tab === "journal" && <Journal />}
+            {tab === "performance" && <Performance />}
+          </section>
+        ) : (
+          <section className="workspace-shell">
+            <div className="workspace-heading">
+              <div>
+                <div className="workspace-label">Swing Trading</div>
+                <h2>Swing Trading Workspace</h2>
+                <p>Scan stocks, score setups, review risk-reward, and track multi-day opportunities separately from intraday options.</p>
+              </div>
+            </div>
+            <SwingTrading snapshot={snapshot} />
+          </section>
+        )}
       </div>
     </>
   );
