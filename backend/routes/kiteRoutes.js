@@ -10,6 +10,7 @@ import {
   kiteHistorical,
 } from "../services/kiteConnect.js";
 import { getKiteMarketSnapshot } from "../services/kiteMarketData.js";
+import { registerChartRoutes } from "./chartRoutes.js";
 
 function sendError(res, error) {
   const status = /missing|required|not authenticated/i.test(error.message) ? 400 : 500;
@@ -24,8 +25,8 @@ function appUrl(status = "connected") {
 }
 
 export function registerKiteRoutes(app) {
-  // This route is registered before the legacy Yahoo /api/market route in server.js,
-  // so the live dashboard now uses Kite when MARKET_DATA_PROVIDER=kite.
+  registerChartRoutes(app);
+
   app.get("/api/market", async (_req, res, next) => {
     if ((process.env.MARKET_DATA_PROVIDER || "").toLowerCase() !== "kite") return next();
     try {
@@ -55,15 +56,12 @@ export function registerKiteRoutes(app) {
 
   app.get("/api/kite/callback", async (req, res) => {
     try {
-      // If user opens the callback URL directly, start the Kite login flow.
       if (!req.query.request_token && !req.query.status) {
         return res.redirect("/api/kite/login?redirect=true");
       }
-
       if (req.query.status && req.query.status !== "success") {
         return res.redirect(appUrl("failed"));
       }
-
       await kiteCallback(req.query.request_token);
       return res.redirect(appUrl("connected"));
     } catch (error) {
