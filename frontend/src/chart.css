@@ -1,0 +1,59 @@
+.chart-card {
+  border: 1px solid var(--border-soft);
+  border-radius: 22px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-soft);
+}
+
+.chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.chart-head h3 {
+  margin: 6px 0 0;
+  font-size: 1.15rem;
+}
+
+.chart-meta {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.chart-meta strong {
+  color: var(--text);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.price-chart {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+.chart-dot {
+  fill: var(--accent);
+}
+
+.chart-empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border: 1px dashed var(--border-soft);
+  border-radius: 16px;
+}
