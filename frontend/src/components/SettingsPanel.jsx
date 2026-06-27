@@ -1,3 +1,5 @@
+import "./SettingsPanel.css";
+
 const CAP_CHIPS = [
   { label: "₹1L", value: 100000 },
   { label: "₹3L", value: 300000 },
