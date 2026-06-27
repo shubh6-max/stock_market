@@ -57,17 +57,17 @@ function isRateLimitError(error) {
   return /too many requests/i.test(error?.message || String(error));
 }
 
-function normalizeQuote(symbol, q) {
+function mapQuoteToSpot(symbol, quote) {
   return {
     symbol,
-    price: q.regularMarketPrice,
-    change: q.regularMarketChange,
-    changePct: q.regularMarketChangePercent,
-    dayHigh: q.regularMarketDayHigh,
-    dayLow: q.regularMarketDayLow,
-    prevClose: q.regularMarketPreviousClose,
-    open: q.regularMarketOpen,
-    time: q.regularMarketTime,
+    price: quote.regularMarketPrice,
+    change: quote.regularMarketChange,
+    changePct: quote.regularMarketChangePercent,
+    dayHigh: quote.regularMarketDayHigh,
+    dayLow: quote.regularMarketDayLow,
+    prevClose: quote.regularMarketPreviousClose,
+    open: quote.regularMarketOpen,
+    time: quote.regularMarketTime,
   };
 }
 
@@ -77,11 +77,7 @@ export async function getSpotQuote(symbol) {
 
   try {
     const q = await yahooFinance.quote(symbol);
-<<<<<<< HEAD
-    return mapQuoteToSpot(symbol, q);
-=======
-    return setCache(quoteCache, symbol, normalizeQuote(symbol, q));
->>>>>>> fcf5df926648b35763a88d89b8bf9e65192ff3ec
+    return setCache(quoteCache, symbol, mapQuoteToSpot(symbol, q));
   } catch (e) {
     const message = simplifyYahooError(e);
     const stale = getStaleCache(quoteCache, symbol);
@@ -186,34 +182,14 @@ async function loadDashboardSnapshot() {
     ["crude", SYMBOLS.CRUDE_BRENT],
     ["us10y", SYMBOLS.US10Y],
   ];
-<<<<<<< HEAD
-  const out = {};
-
-  try {
-    const symbols = targets.map(([_, symbol]) => symbol);
-    const quotes = await yahooFinance.quote(symbols, { return: "object" });
-
-    targets.forEach(([key, symbol]) => {
-      const quote = quotes?.[symbol];
-      out[key] = quote
-        ? mapQuoteToSpot(symbol, quote)
-        : { symbol, error: "quote missing from Yahoo response" };
-    });
-  } catch (e) {
-    console.warn(`[market] dashboard batch quote failed: ${e.message}`);
-    targets.forEach(([key, symbol]) => {
-      out[key] = { symbol, error: e.message };
-    });
-=======
 
   const out = {};
 
   // Sequential calls reduce Yahoo rate-limit spikes compared with firing all quotes at once.
   for (let i = 0; i < targets.length; i++) {
-    const [key, sym] = targets[i];
-    out[key] = await getSpotQuote(sym);
+    const [key, symbol] = targets[i];
+    out[key] = await getSpotQuote(symbol);
     if (i < targets.length - 1) await sleep(QUOTE_THROTTLE_MS);
->>>>>>> fcf5df926648b35763a88d89b8bf9e65192ff3ec
   }
 
   out.timestamp = new Date().toISOString();
@@ -240,10 +216,9 @@ export async function getDashboardSnapshot() {
 
   if (dashboardInFlight) return dashboardInFlight;
 
-  dashboardInFlight = loadDashboardSnapshot()
-    .finally(() => {
-      dashboardInFlight = null;
-    });
+  dashboardInFlight = loadDashboardSnapshot().finally(() => {
+    dashboardInFlight = null;
+  });
 
   return dashboardInFlight;
 }
@@ -287,22 +262,8 @@ export function assessDataQuality({ snapshot, indicators, optionChainOk, candles
     score,
     band: score >= 75 ? "good" : score >= 45 ? "partial" : "poor",
     issues,
-    chart_image_available: true,  // always true if user uploaded
+    chart_image_available: true, // always true if user uploaded
   };
 }
 
 export { SYMBOLS };
-
-function mapQuoteToSpot(symbol, quote) {
-  return {
-    symbol,
-    price: quote.regularMarketPrice,
-    change: quote.regularMarketChange,
-    changePct: quote.regularMarketChangePercent,
-    dayHigh: quote.regularMarketDayHigh,
-    dayLow: quote.regularMarketDayLow,
-    prevClose: quote.regularMarketPreviousClose,
-    open: quote.regularMarketOpen,
-    time: quote.regularMarketTime,
-  };
-}
