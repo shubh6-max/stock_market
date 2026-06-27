@@ -24,12 +24,14 @@ export default function LiveTicker({ snapshot }) {
       <div className="ticker">
         <div className="tick">
           <span className="dot-live"></span>
-          <span className="name">Loading live market...</span>
+          <span className="name">Loading data...</span>
         </div>
       </div>
     );
   }
 
+  const status = snapshot.market_status;
+  const isOpen = status?.state === "live";
   const items = [
     { name: "NIFTY", quote: snapshot.nifty },
     { name: "BANKNIFTY", quote: snapshot.banknifty },
@@ -43,8 +45,8 @@ export default function LiveTicker({ snapshot }) {
   return (
     <div className="ticker">
       <div className="tick">
-        <span className="dot-live"></span>
-        <span className="name" style={{ color: "var(--green)" }}>LIVE</span>
+        <span className={isOpen ? "dot-live" : "dot-closed"}></span>
+        <span className={`name ${isOpen ? "up" : "closed"}`}>{status?.label || "Status"}</span>
       </div>
       {items.map((item) => (
         <div key={item.name} className="tick">
