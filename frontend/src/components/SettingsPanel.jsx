@@ -86,10 +86,22 @@ export default function SettingsPanel({
       </div>
 
       <div className="field">
-        <label className={`check-row ${overnight ? "active" : ""}`}>
-          <input type="checkbox" checked={overnight} onChange={(event) => setOvernight(event.target.checked)} />
-          Allow overnight holding
-        </label>
+        <div className={`switch-row ${overnight ? "active" : ""}`}>
+          <div className="switch-copy">
+            <label htmlFor="overnight-holding">Overnight</label>
+            <span>Allow positional holding</span>
+          </div>
+          <button
+            id="overnight-holding"
+            type="button"
+            role="switch"
+            aria-checked={overnight}
+            className={`switch-control ${overnight ? "active" : ""}`}
+            onClick={() => setOvernight(!overnight)}
+          >
+            <span className="switch-thumb" />
+          </button>
+        </div>
       </div>
     </>
   );
